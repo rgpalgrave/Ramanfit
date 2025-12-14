@@ -129,6 +129,11 @@ if uploaded_file is not None:
     mask = (exp_x >= 0) & (exp_x <= 400)
     exp_x, exp_y = exp_x[mask], exp_y[mask]
     
+    # Normalize experimental spectrum to max = 1000 (similar scale to theory)
+    if len(exp_y) > 0 and np.max(exp_y) > 0:
+        exp_y = exp_y * (1000.0 / np.max(exp_y))
+        st.sidebar.success(f"✓ Loaded {len(exp_x)} points (normalized)")
+    
     if len(exp_x) > 0:
         fig.add_trace(go.Scatter(
             x=exp_x, y=exp_y,
@@ -204,17 +209,14 @@ if exp_x is not None and len(exp_x) > 0 and np.any(fitted_spectrum > 0):
     # Interpolate fitted to experimental x values
     fitted_interp = np.interp(exp_x, x_range, fitted_spectrum)
     
-    # Scale fitted to match experimental intensity
-    scale = np.max(exp_y) / np.max(fitted_interp) if np.max(fitted_interp) > 0 else 1
-    fitted_scaled = fitted_interp * scale
+    residual = exp_y - fitted_interp
+    ss_res = np.sum(residual**2)
+    ss_tot = np.sum((exp_y - np.mean(exp_y))**2)
+    r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0
     
-    residual = exp_y - fitted_scaled
-    r_squared = 1 - np.sum(residual**2) / np.sum((exp_y - np.mean(exp_y))**2)
-    
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     col1.metric("R²", f"{r_squared:.4f}")
     col2.metric("RMS Residual", f"{np.sqrt(np.mean(residual**2)):.2f}")
-    col3.metric("Scale Factor", f"{scale:.2f}")
     
     # Residual plot
     fig_resid = go.Figure()
@@ -226,7 +228,7 @@ if exp_x is not None and len(exp_x) > 0 and np.any(fitted_spectrum > 0):
     ))
     fig_resid.add_hline(y=0, line_dash="dash", line_color="black")
     fig_resid.update_layout(
-        title="Residual (Experimental - Scaled Fit)",
+        title="Residual (Experimental - Fit)",
         xaxis_title="Wavenumber (cm⁻¹)",
         yaxis_title="Residual Intensity",
         xaxis=dict(range=[0, 400], autorange='reversed'),
@@ -242,6 +244,7 @@ with st.expander("📖 Instructions"):
     1. **Upload your experimental spectrum** using the file uploader in the sidebar
        - Accepts .txt, .xy, .dat, or .csv files
        - Format: two columns (wavenumber, intensity) separated by spaces, tabs, or commas
+       - The spectrum is automatically normalized (max intensity = 1000)
        
     2. **Adjust the peak width (FWHM)** to match your experimental resolution
     
